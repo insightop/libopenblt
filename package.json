@@ -1,0 +1,44 @@
+{
+  "name": "@insightop/libopenblt",
+  "version": "0.1.0",
+  "description": "TypeScript implementation of the OpenBLT host library for XCP-based firmware updates over Modbus RTU",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "openblt",
+    "xcp",
+    "ota",
+    "modbus",
+    "firmware-update",
+    "bootloader",
+    "stm32"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "clean": "rm -rf dist .tsbuildinfo"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "~5.6.2",
+    "vitest": "^4.1.7"
+  }
+}
