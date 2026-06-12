@@ -349,8 +349,9 @@ export class XcpTpMbRtu implements XcpTransport {
       }
     }
 
-    // Aligns with C: return false if timeout exceeded (line not idle)
+    // Aligns with C XcpTpMbRtuConnect: close port and return false if timeout exceeded
     if (Date.now() >= deadline) {
+      serialPort.close()
       return false
     }
 
@@ -386,6 +387,7 @@ export class XcpTpMbRtu implements XcpTransport {
     await this.waitT3_5()
 
     // Build and transmit the Modbus RTU frame
+    // Aligns with C xcptpmbrtu.c:437-443: on write failure, skip reception entirely
     if (txPacket.length > 0) {
       const frame = xcpTpMbRtuBuildFrame(txPacket, destinationAddr)
       if (!await serialPort.write(frame)) {
@@ -393,7 +395,7 @@ export class XcpTpMbRtu implements XcpTransport {
       }
     }
 
-    // Receive response
+    // Receive response (only reached when write succeeded or txPacket was empty)
     const deadline = Date.now() + timeout
     const rxBuffer: number[] = []
 

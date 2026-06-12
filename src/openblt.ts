@@ -219,7 +219,11 @@ export async function bltSessionReadData(
   address: number,
   len: number,
 ): Promise<Uint8Array> {
-  return sessionReadData(address, len)
+  try {
+    return await sessionReadData(address, len)
+  } catch {
+    throw new Error('Session read data failed')
+  }
 }
 
 /**

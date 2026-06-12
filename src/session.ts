@@ -67,7 +67,7 @@ export async function sessionStop(): Promise<void> {
  * Aligns with C SessionClearMemory.
  */
 export async function sessionClearMemory(address: number, len: number): Promise<boolean> {
-  if (!protocolPtr) return false
+  if (!protocolPtr || len === 0) return false
   return protocolPtr.clearMemory(address, len)
 }
 
@@ -80,7 +80,7 @@ export async function sessionWriteData(
   len: number,
   data: Uint8Array,
 ): Promise<boolean> {
-  if (!protocolPtr) return false
+  if (!protocolPtr || len === 0 || !data) return false
   return protocolPtr.writeData(address, len, data)
 }
 
@@ -93,6 +93,7 @@ export async function sessionReadData(
   len: number,
 ): Promise<Uint8Array> {
   if (!protocolPtr) throw new Error('Session not initialized')
+  if (len === 0) throw new Error('SessionReadData: len must be > 0')
   return protocolPtr.readData(address, len)
 }
 

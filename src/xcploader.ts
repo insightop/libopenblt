@@ -39,6 +39,9 @@ import {
 } from './xcploader-types.js'
 import {
   XCPPROTECT_RESOURCE_PGM,
+  XCPPROTECT_RESOURCE_STIM,
+  XCPPROTECT_RESOURCE_DAQ,
+  XCPPROTECT_RESOURCE_CALPAG,
   xcpProtectInit,
   xcpProtectTerminate,
   xcpProtectGetPrivileges,
@@ -221,6 +224,8 @@ export class XcpLoader implements SessionProtocol {
     }
     this.xcpConnected_ = false
     this.xcpBypassFirmwareStart_ = false
+    // Reset settings to defaults — aligns with C xcploader.c:265-275
+    this.xcpSettings_ = createDefaultXcpLoaderSettings()
   }
 
   /**
@@ -230,7 +235,7 @@ export class XcpLoader implements SessionProtocol {
    *   → check resource protection → UNLOCK if needed → PROGRAM_START
    */
   async start(): Promise<boolean> {
-    if (!this.transport_) throw new Error('Transport not initialized')
+    if (!this.transport_) return false
 
     // Stop any existing session first
     await this.stop()
@@ -257,71 +262,90 @@ export class XcpLoader implements SessionProtocol {
     }
 
     // GET_STATUS to check resource protection
-    const protectedResources = await this.sendCmdGetStatus()
+    let protectedResources = 0
+    try {
+      const statusResult = await this.sendCmdGetStatus()
+      protectedResources = statusResult.protectedResources
+    } catch {
+      return false
+    }
 
     // Check if programming resource needs to be unlocked
     if ((protectedResources & XCPPROTECT_RESOURCE_PGM) !== 0) {
       const availableResources = xcpProtectGetPrivileges()
       if ((availableResources & XCPPROTECT_RESOURCE_PGM) === 0) {
-        throw new Error('No unlock algorithm available for programming resource')
+        return false
       }
 
       // Get seed — aligns with C xcploader.c L370-395 (multi-part seed retrieval)
-      const seedParts: Uint8Array[] = []
       let seedTotalLen = 0
       let seedRemainingLen = 0
+      let seed: Uint8Array
 
-      // First request (mode=0)
-      const firstSeedResult = await this.sendCmdGetSeed(XCPPROTECT_RESOURCE_PGM, 0)
-      seedParts.push(firstSeedResult.seed)
-      seedTotalLen = firstSeedResult.remainingLen
-      seedRemainingLen = firstSeedResult.remainingLen
+      try {
+        const seedParts: Uint8Array[] = []
 
-      // Loop for remaining parts (mode=1) if seed spans multiple responses
-      while (seedRemainingLen > (this.xcpMaxDto_ - 2)) {
-        const nextSeedResult = await this.sendCmdGetSeed(XCPPROTECT_RESOURCE_PGM, 1)
-        seedParts.push(nextSeedResult.seed)
-        seedRemainingLen = nextSeedResult.remainingLen
-      }
+        // First request (mode=0)
+        const firstSeedResult = await this.sendCmdGetSeed(XCPPROTECT_RESOURCE_PGM, 0)
+        seedParts.push(firstSeedResult.seed)
+        seedTotalLen = firstSeedResult.remainingLen
+        seedRemainingLen = firstSeedResult.remainingLen
 
-      // Merge all seed parts
-      const seed = new Uint8Array(seedTotalLen)
-      let seedOffset = 0
-      for (const part of seedParts) {
-        seed.set(part, seedOffset)
-        seedOffset += part.length
+        // Loop for remaining parts (mode=1) if seed spans multiple responses
+        while (seedRemainingLen > (this.xcpMaxDto_ - 2)) {
+          const nextSeedResult = await this.sendCmdGetSeed(XCPPROTECT_RESOURCE_PGM, 1)
+          seedParts.push(nextSeedResult.seed)
+          seedRemainingLen = nextSeedResult.remainingLen
+        }
+
+        // Merge all seed parts
+        seed = new Uint8Array(seedTotalLen)
+        let seedOffset = 0
+        for (const part of seedParts) {
+          seed.set(part, seedOffset)
+          seedOffset += part.length
+        }
+      } catch {
+        return false
       }
 
       // Only continue with resource unlock if seed is not empty (already unlocked)
       if (seedTotalLen > 0) {
         // Compute key from seed
-        const key = xcpProtectComputeKeyFromSeed(XCPPROTECT_RESOURCE_PGM, seed)
+        let key: Uint8Array
+        try {
+          key = xcpProtectComputeKeyFromSeed(XCPPROTECT_RESOURCE_PGM, seed)
+        } catch {
+          return false
+        }
 
         // Send key — aligns with C xcploader.c L417-444 (multi-part key sending)
         let keyRemainingLen = key.length
         let keyOffset = 0
         let currentlyProtectedResources = 0
 
-        while (keyRemainingLen > 0) {
-          const keyCurrentLen = Math.min(keyRemainingLen, this.xcpMaxCto_ - 2)
-          const keyChunk = key.subarray(keyOffset, keyOffset + keyCurrentLen)
-          currentlyProtectedResources = await this.sendCmdUnlock(keyChunk, key.length)
-          keyRemainingLen -= keyCurrentLen
-          keyOffset += keyCurrentLen
-
-          // Double-check that unlock succeeded (only verify after all parts sent)
-          if (keyRemainingLen === 0) {
-            if ((currentlyProtectedResources & XCPPROTECT_RESOURCE_PGM) !== 0) {
-              throw new Error('Failed to unlock programming resource')
-            }
+        try {
+          while (keyRemainingLen > 0) {
+            const keyCurrentLen = Math.min(keyRemainingLen, this.xcpMaxCto_ - 2)
+            const keyChunk = key.subarray(keyOffset, keyOffset + keyCurrentLen)
+            currentlyProtectedResources = await this.sendCmdUnlock(keyChunk, keyRemainingLen)
+            keyRemainingLen -= keyCurrentLen
+            keyOffset += keyCurrentLen
           }
+        } catch {
+          return false
+        }
+
+        // Double-check that unlock succeeded
+        if ((currentlyProtectedResources & XCPPROTECT_RESOURCE_PGM) !== 0) {
+          return false
         }
       }
     }
 
     // PROGRAM_START
     if (!await this.sendCmdProgramStart()) {
-      throw new Error('PROGRAM_START failed')
+      return false
     }
 
     return true
@@ -448,9 +472,14 @@ export class XcpLoader implements SessionProtocol {
     // Phase 1: GET_INFO (aligns with C XcpLoaderSendCmdItCidGetInfo)
     const infoResult = await this.sendCmdItCidGetInfo()
     if (!infoResult) {
-      // Aligns with C: any GetInfo failure (ERR_CMD_UNKNOWN, tableLen=0, comm error)
-      // → result = false → BLT_RESULT_ERROR_GENERIC
+      // Communication error or ERR_CMD_UNKNOWN — aligns with C: result = false
       return { supported: false, okay: false }
+    }
+
+    // Info table feature not supported/enabled (tableLen=0).
+    // Aligns with C xcploader.c:742-753: *supported=false, *okay=true
+    if (infoResult.tableLen === 0) {
+      return { supported: false, okay: true }
     }
 
     // Phase 2: Extract info table from firmware segments
@@ -595,23 +624,18 @@ export class XcpLoader implements SessionProtocol {
    * packet arrives first, it re-receives with the short T6 timeout to get the
    * actual GET_STATUS response.
    *
-   * @returns protectedResources bitmask
+   * @returns { session, protectedResources, configId }
    */
-  private async sendCmdGetStatus(): Promise<number> {
+  private async sendCmdGetStatus(): Promise<{ session: number; protectedResources: number; configId: number }> {
     const res = await this.sendRawCmd(XCPLOADER_CMD_GET_STATUS, null, this.xcpSettings_.timeoutT1)
 
     // Check for stale CONNECT response (aligns with C xcploader.c:1110-1125)
-    // If we get an 8-byte CONNECT-like response, try to receive again with short timeout
     let actualRes = res
     if (res.len === 8 && res.data[0] === XCPLOADER_CMD_PID_RES) {
-      // This looks like a stale CONNECT response. Try to receive the real GET_STATUS.
-      // C code: cmdPacket.len = 0; sendPacket(&cmdPacket, &resPacket, timeoutT6)
-      // A zero-length sendPacket just receives without sending.
       try {
         const secondRes = await this.transport_!.sendPacket(new Uint8Array(0), this.xcpSettings_.timeoutT6)
         actualRes = { data: secondRes.data, len: secondRes.len }
       } catch {
-        // Aligns with C: re-receive failure → result = false
         throw new Error('GET_STATUS failed: stale CONNECT response, re-receive failed')
       }
     }
@@ -620,17 +644,17 @@ export class XcpLoader implements SessionProtocol {
       throw new Error('GET_STATUS failed: invalid response')
     }
 
-    // GET_STATUS response (6 bytes total, raw with PID):
-    //   data[0] = PID_RES (0xFF)
-    //   data[1] = session status
-    //   data[2] = protectedResources
-    //   data[3..4] = reserved
-    //   data[5] = configId (low byte)
-    if (actualRes.len < 6) {
-      throw new Error('GET_STATUS response too short')
+    // Aligns with C xcploader.c:1192: len != 6 (exact match)
+    if (actualRes.len !== 6) {
+      throw new Error('GET_STATUS response wrong length')
     }
 
-    return actualRes.data[2] // protectedResources
+    // Extract all fields — aligns with C xcploader.c:1203-1216
+    return {
+      session: actualRes.data[1],
+      protectedResources: actualRes.data[2],
+      configId: getOrderedWord(actualRes.data.subarray(4) as Uint8Array, this.xcpSlaveIsIntel_),
+    }
   }
 
   /**
@@ -642,6 +666,16 @@ export class XcpLoader implements SessionProtocol {
    * For multi-part seeds, the caller should loop calling this with mode=1 until remainingLen <= (maxDto - 2).
    */
   private async sendCmdGetSeed(resource: number, mode: number): Promise<{ seed: Uint8Array; remainingLen: number }> {
+    // Validate resource — aligns with C xcploader.c:1251-1254
+    if (
+      resource !== XCPPROTECT_RESOURCE_PGM &&
+      resource !== XCPPROTECT_RESOURCE_STIM &&
+      resource !== XCPPROTECT_RESOURCE_DAQ &&
+      resource !== XCPPROTECT_RESOURCE_CALPAG
+    ) {
+      throw new Error('GET_SEED: invalid resource')
+    }
+
     // Payload only — sendRawCmd will prepend the command byte
     const cmdData = new Uint8Array(2)
     cmdData[0] = mode
@@ -649,7 +683,8 @@ export class XcpLoader implements SessionProtocol {
 
     const res = await this.sendRawCmd(XCPLOADER_CMD_GET_SEED, cmdData, this.xcpSettings_.timeoutT1)
 
-    if (res.len <= 2 || res.data[0] !== XCPLOADER_CMD_PID_RES) {
+    // Aligns with C xcploader.c:1276: len <= 2 || len > xcpMaxDto || data[0] != PID_RES
+    if (res.len <= 2 || res.len > this.xcpMaxDto_ || res.data[0] !== XCPLOADER_CMD_PID_RES) {
       throw new Error('GET_SEED failed')
     }
 
@@ -664,18 +699,17 @@ export class XcpLoader implements SessionProtocol {
   /**
    * Send XCP UNLOCK command (single chunk).
    * Aligns with C XcpLoaderSendCmdUnlock.
-   * Packet: [CMD_UNLOCK][totalKeyLen][keyChunk...] — cmdData contains total key length + current chunk.
+   * Packet: [CMD_UNLOCK][keyRemainingLen][keyChunk...] — byte[1] is the remaining key length.
    *
    * For multi-part keys, the caller should loop calling this with successive chunks.
-   * The keyLen field always contains the TOTAL key length (not the current chunk length),
-   * matching C code behavior.
+   * keyRemainingLen should decrease with each call (matching C code behavior).
    */
-  private async sendCmdUnlock(keyChunk: Uint8Array, totalKeyLen: number): Promise<number> {
+  private async sendCmdUnlock(keyChunk: Uint8Array, keyRemainingLen: number): Promise<number> {
     const keyCurrentLen = Math.min(keyChunk.length, this.xcpMaxCto_ - 2)
 
     // Payload only — sendRawCmd will prepend the command byte
     const cmdData = new Uint8Array(1 + keyCurrentLen)
-    cmdData[0] = totalKeyLen
+    cmdData[0] = keyRemainingLen
     cmdData.set(keyChunk.subarray(0, keyCurrentLen), 1)
 
     const res = await this.sendRawCmd(XCPLOADER_CMD_UNLOCK, cmdData, this.xcpSettings_.timeoutT1)
@@ -699,7 +733,9 @@ export class XcpLoader implements SessionProtocol {
     setOrderedLong(address, cmdData.subarray(3) as Uint8Array, this.xcpSlaveIsIntel_)
 
     try {
-      await this.sendCmd(XCPLOADER_CMD_SET_MTA, cmdData, this.xcpSettings_.timeoutT1)
+      // Aligns with C xcploader.c:1417: len != 1 check
+      const res = await this.sendRawCmd(XCPLOADER_CMD_SET_MTA, cmdData, this.xcpSettings_.timeoutT1)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) return false
       return true
     } catch {
       return false
@@ -712,6 +748,11 @@ export class XcpLoader implements SessionProtocol {
    * Packet: [CMD_UPLOAD][length] — cmdData contains only length.
    */
   private async sendCmdUpload(length: number): Promise<Uint8Array> {
+    // Validate length — aligns with C xcploader.c:1450
+    if (length >= this.xcpMaxDto_) {
+      throw new Error('UPLOAD: length exceeds maxDto')
+    }
+
     // Payload only — sendRawCmd will prepend the command byte
     const cmdData = new Uint8Array(1)
     cmdData[0] = length
@@ -737,13 +778,14 @@ export class XcpLoader implements SessionProtocol {
         this.xcpSettings_.timeoutT3,
       )
 
-      // Parse maxProgCto from response
-      // Response (7 bytes, PID stripped): [reserved][comm_mode][maxProgCto][bs][st_min][queue]
-      if (data.length >= 3) {
-        this.xcpMaxProgCto_ = data[2]
-        if (this.xcpMaxProgCto_ > XCPLOADER_PACKET_SIZE_MAX) {
-          this.xcpMaxProgCto_ = XCPLOADER_PACKET_SIZE_MAX
-        }
+      // Parse maxProgCto from response — aligns with C xcploader.c:1520 (len != 7)
+      // sendCmd strips PID_RES, so 7-byte raw response → 6-byte data
+      if (data.length !== 6) {
+        throw new Error('PROGRAM_START response wrong length')
+      }
+      this.xcpMaxProgCto_ = data[2]
+      if (this.xcpMaxProgCto_ > XCPLOADER_PACKET_SIZE_MAX) {
+        this.xcpMaxProgCto_ = XCPLOADER_PACKET_SIZE_MAX
       }
 
       return true
@@ -777,7 +819,9 @@ export class XcpLoader implements SessionProtocol {
    */
   private async sendCmdDisconnect(): Promise<boolean> {
     try {
-      await this.sendCmd(XCPLOADER_CMD_DISCONNECT, null, this.xcpSettings_.timeoutT1)
+      // Aligns with C xcploader.c:1118: len != 1 check
+      const res = await this.sendRawCmd(XCPLOADER_CMD_DISCONNECT, null, this.xcpSettings_.timeoutT1)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) return false
       return true
     } catch {
       return false
@@ -790,6 +834,11 @@ export class XcpLoader implements SessionProtocol {
    * When length=0 and data=null, ends the programming session.
    */
   private async sendCmdProgram(length: number, data: Uint8Array | null): Promise<boolean> {
+    // Validate length — aligns with C xcploader.c:1603
+    if (length > (this.xcpMaxProgCto_ - 2) || this.xcpMaxProgCto_ > XCPLOADER_PACKET_SIZE_MAX) {
+      return false
+    }
+
     const cmdData = new Uint8Array(1 + length)
     cmdData[0] = length
     if (data && length > 0) {
@@ -797,7 +846,9 @@ export class XcpLoader implements SessionProtocol {
     }
 
     try {
-      await this.sendCmd(XCPLOADER_CMD_PROGRAM, cmdData, this.xcpSettings_.timeoutT5)
+      // Aligns with C xcploader.c:1642: len != 1 check
+      const res = await this.sendRawCmd(XCPLOADER_CMD_PROGRAM, cmdData, this.xcpSettings_.timeoutT5)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) return false
       return true
     } catch {
       return false
@@ -811,7 +862,9 @@ export class XcpLoader implements SessionProtocol {
    */
   private async sendCmdProgramMax(data: Uint8Array): Promise<boolean> {
     try {
-      await this.sendCmd(XCPLOADER_CMD_PROGRAM_MAX, data, this.xcpSettings_.timeoutT5)
+      // Aligns with C xcploader.c:1694: len != 1 check
+      const res = await this.sendRawCmd(XCPLOADER_CMD_PROGRAM_MAX, data, this.xcpSettings_.timeoutT5)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) return false
       return true
     } catch {
       return false
@@ -830,7 +883,9 @@ export class XcpLoader implements SessionProtocol {
     setOrderedLong(length, cmdData.subarray(3) as Uint8Array, this.xcpSlaveIsIntel_)
 
     try {
-      await this.sendCmd(XCPLOADER_CMD_PROGRAM_CLEAR, cmdData, this.xcpSettings_.timeoutT4)
+      // Aligns with C xcploader.c:1740: len != 1 check
+      const res = await this.sendRawCmd(XCPLOADER_CMD_PROGRAM_CLEAR, cmdData, this.xcpSettings_.timeoutT4)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) return false
       return true
     } catch {
       return false
@@ -894,8 +949,8 @@ export class XcpLoader implements SessionProtocol {
       const tableAddress = getOrderedLong(res.data.subarray(4) as Uint8Array, this.xcpSlaveIsIntel_)
 
       if (tableLen === 0) {
-        // Aligns with C: tableLen=0 → result = false (error)
-        return null
+        // Aligns with C: tableLen=0 is not an error — feature not supported/enabled
+        return { tableAddress: 0, tableLen: 0 }
       }
 
       return { tableAddress, tableLen }

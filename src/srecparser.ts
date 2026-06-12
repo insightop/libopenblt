@@ -69,9 +69,10 @@ function verifyChecksum(line: string): boolean {
     sum += hexStringToByte(line.substring(i, i + 2))
   }
 
-  // Checksum verification: sum of all bytes (including checksum) should be 0x100
+  // Checksum verification: checksum byte should equal one's complement of sum.
+  // Aligns with C SRecParserVerifyChecksum: checksumVal = ~checksumVal; checksum == checksumVal
   const checksumByte = hexStringToByte(line.substring(2 + byteCount * 2, 4 + byteCount * 2))
-  return ((sum + checksumByte) & 0xFF) === 0x00
+  return checksumByte === ((~sum) & 0xFF)
 }
 
 /**
@@ -118,21 +119,37 @@ function extractLineData(line: string): { address: number; data: Uint8Array } | 
 
 /**
  * Load firmware from S-Record content string.
- * Aligns with C SRecParserLoadFromFile.
+ * Aligns with C SRecParserLoadFromFile: verifies file first via SRecParserVerifyFile,
+ * then extracts data records. Rejects the entire file on any checksum error.
  */
 function srecLoadFromFile(content: string, addressOffset: number): boolean {
   const lines = content.split(/\r?\n/)
-  let parsedCount = 0
 
+  // Pre-verification pass — aligns with C SRecParserVerifyFile.
+  // Check all data record checksums and verify at least one data record exists.
+  let hasDataRecord = false
   for (const rawLine of lines) {
     const line = rawLine.trim()
     if (line.length === 0) continue
 
     const lineType = getLineType(line)
-    if (lineType < 0) continue // Skip unsupported lines
+    if (lineType < 0) continue
 
-    // Verify checksum
-    if (!verifyChecksum(line)) continue
+    if (lineType >= SREC_LINE_TYPE_S1 && lineType <= SREC_LINE_TYPE_S3) {
+      hasDataRecord = true
+      if (!verifyChecksum(line)) return false
+    }
+  }
+  if (!hasDataRecord) return false
+
+  // Data extraction pass
+  let parsedCount = 0
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (line.length === 0) continue
+
+    const lineType = getLineType(line)
+    if (lineType < 0) continue
 
     // Only process data records (S1, S2, S3)
     if (lineType >= SREC_LINE_TYPE_S1 && lineType <= SREC_LINE_TYPE_S3) {
@@ -194,11 +211,11 @@ function srecConstructLine(lineType: number, address: number, data: Uint8Array):
   // Determine address length based on line type
   let addrLen: number
   switch (lineType) {
+    case SREC_LINE_TYPE_S0:
     case SREC_LINE_TYPE_S1:
     case SREC_LINE_TYPE_S9: addrLen = 2; break
     case SREC_LINE_TYPE_S2:
     case SREC_LINE_TYPE_S8: addrLen = 3; break
-    case SREC_LINE_TYPE_S0:
     case SREC_LINE_TYPE_S3:
     case SREC_LINE_TYPE_S7: addrLen = 4; break
     default: addrLen = 4
@@ -223,7 +240,7 @@ function srecConstructLine(lineType: number, address: number, data: Uint8Array):
   for (let i = 2; i < hexStr.length; i += 2) {
     sum += parseInt(hexStr.substring(i, i + 2), 16)
   }
-  const checksum = (~sum + 1) & 0xFF
+  const checksum = (~sum) & 0xFF
   hexStr += checksum.toString(16).padStart(2, '0').toUpperCase()
 
   return hexStr
