@@ -1,8 +1,12 @@
 {
   "name": "@insightop/libopenblt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript implementation of the OpenBLT host library for XCP-based firmware updates over Modbus RTU",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/insightop/libopenblt.git"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
