@@ -9,6 +9,8 @@
 
 // ── OpenBLT Library API (aligning with openblt.h) ────────────
 export {
+  BLT_VERSION_NUMBER,
+  BLT_VERSION_STRING,
   BLT_SESSION_XCP_V10,
   BLT_TRANSPORT_XCP_V10_MBRTU,
   BLT_RESULT_OK,
@@ -33,6 +35,13 @@ export {
   bltFirmwareClearData,
   bltUtilCrc16Calculate,
   bltUtilCrc32Calculate,
+  bltVersionGetNumber,
+  bltVersionGetString,
+  bltFirmwareSaveToFile,
+  bltUtilTimeGetSystemTime,
+  bltUtilTimeDelayMs,
+  bltUtilCryptoAes256Encrypt,
+  bltUtilCryptoAes256Decrypt,
 } from './openblt.js'
 export type {
   BltSessionSettingsXcpV10,
@@ -118,13 +127,12 @@ export {
   firmwareInit,
   firmwareTerminate,
   firmwareLoadFromFile,
+  firmwareSaveToFile,
   firmwareGetSegmentCount,
   firmwareGetSegment,
   firmwareAddData,
   firmwareRemoveData,
   firmwareClearData,
-  firmwareGetFirstAddress,
-  firmwareGetLastAddress,
 } from './firmware.js'
 export type { FirmwareSegment, FirmwareParser } from './firmware.js'
 

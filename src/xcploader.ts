@@ -796,18 +796,26 @@ export class XcpLoader implements SessionProtocol {
 
   /**
    * Send XCP PROGRAM_RESET command.
-   * Aligns with C XcpLoaderSendCmdProgramReset (xcploader.c:1488-1524).
-   * Returns true if response received or no response (device may reboot).
-   * Returns false only if an invalid response is received.
+   * Aligns with C XcpLoaderSendCmdProgramReset (xcploader.c:1551-1585).
+   *
+   * Timeout (no response) is OK — device may reboot without responding.
+   * Invalid response (not PID_RES or wrong length) returns false.
    */
   private async sendCmdProgramReset(): Promise<boolean> {
+    this.xcpConnected_ = false
     try {
-      await this.sendCmd(XCPLOADER_CMD_PROGRAM_RESET, null, this.xcpSettings_.timeoutT5)
-      this.xcpConnected_ = false
+      const res = await this.sendRawCmd(
+        XCPLOADER_CMD_PROGRAM_RESET,
+        null,
+        this.xcpSettings_.timeoutT5,
+      )
+      // Response received — validate it (C: resPacket.len != 1 || data[0] != PID_RES → false)
+      if (res.len !== 1 || res.data[0] !== XCPLOADER_CMD_PID_RES) {
+        return false
+      }
       return true
     } catch {
-      // Response is optional — device may reboot immediately, not an error
-      this.xcpConnected_ = false
+      // Timeout is OK — device may reboot without responding (C: result stays true)
       return true
     }
   }
@@ -949,8 +957,8 @@ export class XcpLoader implements SessionProtocol {
       const tableAddress = getOrderedLong(res.data.subarray(4) as Uint8Array, this.xcpSlaveIsIntel_)
 
       if (tableLen === 0) {
-        // Aligns with C: tableLen=0 is not an error — feature not supported/enabled
-        return { tableAddress: 0, tableLen: 0 }
+        // Aligns with C xcploader.c:1831-1836: tableLen=0 → result=false
+        return null
       }
 
       return { tableAddress, tableLen }

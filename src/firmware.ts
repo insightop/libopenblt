@@ -25,7 +25,7 @@ export interface FirmwareParser {
   /** Load firmware data from content string and add segments. */
   loadFromFile(content: string, addressOffset: number): boolean
   /** Save firmware segments to a content string. */
-  saveToFile(segments: FirmwareSegment[]): string
+  saveToFile(segments: FirmwareSegment[], filename?: string): string
 }
 
 // ── Module State ─────────────────────────────────────────────
@@ -67,9 +67,9 @@ export function firmwareLoadFromFile(content: string, addressOffset: number = 0)
  * Save firmware data to a file using the linked parser.
  * Aligns with C FirmwareSaveToFile.
  */
-export function firmwareSaveToFile(): string | null {
+export function firmwareSaveToFile(filename?: string): string | null {
   if (!parser_) return null
-  return parser_.saveToFile(segmentList)
+  return parser_.saveToFile(segmentList, filename)
 }
 
 /**
@@ -190,18 +190,18 @@ export function firmwareClearData(): void {
 
 /**
  * Get the first memory address of firmware data.
- * Aligns with C FirmwareGetFirstAddress (helper).
+ * Internal helper — aligns with C FirmwareGetFirstAddress (static).
  */
-export function firmwareGetFirstAddress(): number {
+function firmwareGetFirstAddress(): number {
   if (segmentList.length === 0) return 0
   return segmentList[0].base
 }
 
 /**
  * Get the last memory address of firmware data.
- * Aligns with C FirmwareGetLastAddress (helper).
+ * Internal helper — aligns with C FirmwareGetLastAddress (static).
  */
-export function firmwareGetLastAddress(): number {
+function firmwareGetLastAddress(): number {
   if (segmentList.length === 0) return 0
   const last = segmentList[segmentList.length - 1]
   return last.base + last.length - 1

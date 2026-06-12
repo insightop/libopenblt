@@ -111,22 +111,46 @@ export function utilTimeDelayMs(delay: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delay))
 }
 
-// ── AES-256 (placeholder — requires Web Crypto or Node crypto) ─
+// ── AES-256 ECB (via @noble/ciphers) ──────────────────────────
+
+import { ecb } from '@noble/ciphers/aes.js'
 
 /**
- * Encrypt data using AES-256.
- * Aligns with util.c UtilCryptoAes256Encrypt.
- * @throws Currently throws — not yet implemented.
+ * Encrypt data using AES-256-ECB (raw, no padding).
+ * Aligns with util.c UtilCryptoAes256Encrypt — encrypts data in-place.
+ *
+ * @param data Plaintext data (modified in-place; must be a multiple of 16 bytes)
+ * @param key 256-bit (32-byte) encryption key
+ * @returns The same `data` reference, now containing ciphertext
  */
-export function utilCryptoAes256Encrypt(_data: Uint8Array, _key: Uint8Array): Uint8Array {
-  throw new Error('AES-256 encrypt not yet implemented — provide seed/key algorithm')
+export function utilCryptoAes256Encrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  if (key.length !== 32) {
+    throw new Error(`AES-256 key must be 32 bytes, got ${key.length}`)
+  }
+  if (data.length === 0) return data
+  if (data.length % 16 !== 0) {
+    throw new Error(`AES-256 data length must be a multiple of 16, got ${data.length}`)
+  }
+  data.set(ecb(key, { disablePadding: true }).encrypt(data))
+  return data
 }
 
 /**
- * Decrypt data using AES-256.
- * Aligns with util.c UtilCryptoAes256Decrypt.
- * @throws Currently throws — not yet implemented.
+ * Decrypt data using AES-256-ECB (raw, no padding).
+ * Aligns with util.c UtilCryptoAes256Decrypt — decrypts data in-place.
+ *
+ * @param data Ciphertext data (modified in-place; must be a multiple of 16 bytes)
+ * @param key 256-bit (32-byte) decryption key
+ * @returns The same `data` reference, now containing plaintext
  */
-export function utilCryptoAes256Decrypt(_data: Uint8Array, _key: Uint8Array): Uint8Array {
-  throw new Error('AES-256 decrypt not yet implemented — provide seed/key algorithm')
+export function utilCryptoAes256Decrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  if (key.length !== 32) {
+    throw new Error(`AES-256 key must be 32 bytes, got ${key.length}`)
+  }
+  if (data.length === 0) return data
+  if (data.length % 16 !== 0) {
+    throw new Error(`AES-256 data length must be a multiple of 16, got ${data.length}`)
+  }
+  data.set(ecb(key, { disablePadding: true }).decrypt(data))
+  return data
 }

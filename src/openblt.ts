@@ -31,6 +31,7 @@ import {
   firmwareInit,
   firmwareTerminate,
   firmwareLoadFromFile,
+  firmwareSaveToFile,
   firmwareGetSegmentCount,
   firmwareGetSegment,
   firmwareAddData,
@@ -41,9 +42,19 @@ import {
 import {
   utilChecksumCrc16Calculate,
   utilChecksumCrc32Calculate,
+  utilTimeGetSystemTimeMs,
+  utilTimeDelayMs,
+  utilCryptoAes256Encrypt,
+  utilCryptoAes256Decrypt,
 } from './util.js'
 
-// ── Constants (aligning with C openblt.h macros) ─────────────
+// ── Constants (aligning with C openblt.h / openblt.c macros) ───
+
+/** Library version number (major*10000 + minor*100 + patch). Aligns with C BLT_VERSION_NUMBER. */
+export const BLT_VERSION_NUMBER = 10500
+
+/** Library version string. Aligns with C BLT_VERSION_STRING. */
+export const BLT_VERSION_STRING = '1.05.00'
 
 /** XCP protocol version 1.0 session type. */
 export const BLT_SESSION_XCP_V10 = 0
@@ -231,12 +242,17 @@ export async function bltSessionReadData(
  * Aligns with C BltSessionCheckInfoTable (openblt.c:442-475).
  */
 export async function bltSessionCheckInfoTable(): Promise<number> {
-  const result = await sessionCheckInfoTable()
-  // Aligns with C: when SessionCheckInfoTable returns false → BLT_RESULT_ERROR_GENERIC
-  if (!result.supported && !result.okay) return BLT_RESULT_ERROR_GENERIC
-  if (!result.supported) return BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED
-  if (!result.okay) return BLT_RESULT_ERROR_SESSION_INFO_TABLE
-  return BLT_RESULT_OK
+  try {
+    const result = await sessionCheckInfoTable()
+    // Aligns with C: when SessionCheckInfoTable returns false → BLT_RESULT_ERROR_GENERIC
+    if (!result.supported && !result.okay) return BLT_RESULT_ERROR_GENERIC
+    if (!result.supported) return BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED
+    if (!result.okay) return BLT_RESULT_ERROR_SESSION_INFO_TABLE
+    return BLT_RESULT_OK
+  } catch {
+    // Protocol not initialized or communication failure → ERROR_GENERIC
+    return BLT_RESULT_ERROR_GENERIC
+  }
 }
 
 // ── Firmware API (aligning with C BltFirmware* functions) ────
@@ -319,6 +335,22 @@ export function bltFirmwareClearData(): void {
 // ── Utility API (aligning with C BltUtil* functions) ─────────
 
 /**
+ * Get library version number.
+ * Aligns with C BltVersionGetNumber.
+ */
+export function bltVersionGetNumber(): number {
+  return BLT_VERSION_NUMBER
+}
+
+/**
+ * Get library version string.
+ * Aligns with C BltVersionGetString.
+ */
+export function bltVersionGetString(): string {
+  return BLT_VERSION_STRING
+}
+
+/**
  * Calculate CRC16.
  * Aligns with C BltUtilCrc16Calculate.
  */
@@ -332,4 +364,51 @@ export function bltUtilCrc16Calculate(data: Uint8Array): number {
  */
 export function bltUtilCrc32Calculate(data: Uint8Array): number {
   return utilChecksumCrc32Calculate(data)
+}
+
+/**
+ * Save firmware data to string content.
+ * Aligns with C BltFirmwareSaveToFile (openblt.c:547-564).
+ * Note: TS returns content string instead of writing to file.
+ */
+export function bltFirmwareSaveToFile(): string | null {
+  return firmwareSaveToFile()
+}
+
+/**
+ * Get system time in milliseconds.
+ * Aligns with C BltUtilTimeGetSystemTime.
+ */
+export function bltUtilTimeGetSystemTime(): number {
+  return utilTimeGetSystemTimeMs()
+}
+
+/**
+ * Delay execution for the specified milliseconds.
+ * Aligns with C BltUtilTimeDelayMs.
+ */
+export async function bltUtilTimeDelayMs(delay: number): Promise<void> {
+  return utilTimeDelayMs(delay)
+}
+
+/**
+ * Encrypt data using AES-256-ECB.
+ * Aligns with C BltUtilCryptoAes256Encrypt.
+ */
+export function bltUtilCryptoAes256Encrypt(
+  data: Uint8Array,
+  key: Uint8Array,
+): Uint8Array {
+  return utilCryptoAes256Encrypt(data, key)
+}
+
+/**
+ * Decrypt data using AES-256-ECB.
+ * Aligns with C BltUtilCryptoAes256Decrypt.
+ */
+export function bltUtilCryptoAes256Decrypt(
+  data: Uint8Array,
+  key: Uint8Array,
+): Uint8Array {
+  return utilCryptoAes256Decrypt(data, key)
 }

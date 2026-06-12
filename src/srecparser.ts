@@ -47,7 +47,6 @@ function getLineType(line: string): number {
   if (line[0] !== 'S' && line[0] !== 's') return -1
   const typeChar = line[1]
   if (typeChar >= '0' && typeChar <= '9') return parseInt(typeChar)
-  if (typeChar >= 'A' && typeChar <= 'F') return 10 + parseInt(typeChar, 16)
   return -1
 }
 
@@ -156,7 +155,9 @@ function srecLoadFromFile(content: string, addressOffset: number): boolean {
       const extracted = extractLineData(line)
       if (extracted) {
         const address = extracted.address + addressOffset
-        firmwareAddData(address, extracted.data.length, extracted.data)
+        if (!firmwareAddData(address, extracted.data.length, extracted.data)) {
+          return false
+        }
         parsedCount++
       }
     }
@@ -169,11 +170,14 @@ function srecLoadFromFile(content: string, addressOffset: number): boolean {
  * Save firmware segments to S-Record content string.
  * Aligns with C SRecParserSaveToFile: dynamically selects S1/S2/S3 based on address range.
  */
-function srecSaveToFile(segments: FirmwareSegment[]): string {
+function srecSaveToFile(segments: FirmwareSegment[], filename?: string): string {
   const lines: string[] = []
 
-  // S0 header record
-  lines.push(srecConstructLine(SREC_LINE_TYPE_S0, 0, new Uint8Array(0)))
+  // S0 header record — write filename if provided (aligns with C UtilFileExtractFilename)
+  const s0Data = filename
+    ? new Uint8Array([...filename].map(c => c.charCodeAt(0) & 0xFF))
+    : new Uint8Array(0)
+  lines.push(srecConstructLine(SREC_LINE_TYPE_S0, 0, s0Data))
 
   // Determine line type based on highest address (aligns with C SRecParserSaveToFile)
   const maxAddr = segments.length > 0

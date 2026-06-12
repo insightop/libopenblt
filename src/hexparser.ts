@@ -106,7 +106,7 @@ function hexLoadFromFile(content: string, addressOffset: number): boolean {
 /**
  * Save firmware segments to Intel HEX content string.
  */
-function hexSaveToFile(segments: FirmwareSegment[]): string {
+function hexSaveToFile(segments: FirmwareSegment[], _filename?: string): string {
   const lines: string[] = []
   let lastExtendedAddr = 0
 

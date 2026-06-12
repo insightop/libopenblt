@@ -10,20 +10,7 @@
  */
 
 import { SerialPortBaudrate, SerialPortParity, SerialPortStopbits, type SerialPort } from './serialport.js'
-
-// ── XcpTransport interface (will move to xcploader.ts in Phase 2) ──
-
-/**
- * XCP transport layer interface — aligns with C tXcpTransport.
- * Will be relocated to xcploader.ts when that module is created.
- */
-export interface XcpTransport {
-  init(settings: unknown): void
-  terminate(): void
-  connect(): Promise<boolean>
-  disconnect(): void
-  sendPacket(txPacket: Uint8Array, timeout: number): Promise<{ data: Uint8Array; len: number }>
-}
+import type { XcpTransport } from './xcploader.js'
 
 // ── Constants (matching C xcptpmbrtu.c macros) ───────────────
 
@@ -391,7 +378,8 @@ export class XcpTpMbRtu implements XcpTransport {
     if (txPacket.length > 0) {
       const frame = xcpTpMbRtuBuildFrame(txPacket, destinationAddr)
       if (!await serialPort.write(frame)) {
-        throw new Error('Failed to transmit Modbus frame')
+        // Aligns with C xcptpmbrtu.c: result=false, skip reception
+        return { data: new Uint8Array(0), len: 0 }
       }
     }
 

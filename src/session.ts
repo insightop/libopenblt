@@ -105,6 +105,6 @@ export async function sessionCheckInfoTable(): Promise<{
   supported: boolean
   okay: boolean
 }> {
-  if (!protocolPtr) return { supported: false, okay: false }
+  if (!protocolPtr) throw new Error('Session protocol not initialized')
   return protocolPtr.checkInfoTable()
 }
