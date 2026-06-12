@@ -38,7 +38,8 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
-    "clean": "rm -rf dist .tsbuildinfo"
+    "clean": "rm -rf dist .tsbuildinfo",
+    "prepublishOnly": "npm run build && npm run test"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
