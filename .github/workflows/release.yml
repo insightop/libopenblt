@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,13 +29,38 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      - name: Release to npm
+      - name: Check for pending changesets
+        id: changesets
+        run: |
+          if ls .changeset/*.md 2>/dev/null | grep -v README.md > /dev/null; then
+            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create version PR
+        if: steps.changesets.outputs.has_changesets == 'true'
         uses: changesets/action@v1
         with:
-          publish: npm run release
           version: npx @changesets/cli version
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check version mismatch
+        if: steps.changesets.outputs.has_changesets == 'false'
+        id: version_check
+        run: |
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED_VERSION=$(npm view @insightop/libopenblt version 2>/dev/null || echo "unpublished")
+          echo "local=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "published=$PUBLISHED_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish to npm
+        if: steps.version_check.outputs.should_publish == 'true'
+        run: npm run release
+        env:
           NPM_CONFIG_PROVENANCE: true
