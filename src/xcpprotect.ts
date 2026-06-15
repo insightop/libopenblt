@@ -11,19 +11,19 @@
 
 import { SeedNKeyAlgorithm } from "./seednkey.js";
 import {
+  XCPPROTECT_RESOURCE_CALPAG,
+  XCPPROTECT_RESOURCE_DAQ,
   XCPPROTECT_RESOURCE_PGM,
   XCPPROTECT_RESOURCE_STIM,
-  XCPPROTECT_RESOURCE_DAQ,
-  XCPPROTECT_RESOURCE_CALPAG,
   type XcpProtectAlgorithm,
 } from "./xcpprotect-types.js";
 
 // Re-export for backward compatibility
 export {
+  XCPPROTECT_RESOURCE_CALPAG,
+  XCPPROTECT_RESOURCE_DAQ,
   XCPPROTECT_RESOURCE_PGM,
   XCPPROTECT_RESOURCE_STIM,
-  XCPPROTECT_RESOURCE_DAQ,
-  XCPPROTECT_RESOURCE_CALPAG,
   type XcpProtectAlgorithm,
 };
 

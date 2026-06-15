@@ -33,5 +33,17 @@
   },
   "files": {
     "includes": ["**", "!**/node_modules", "!**/dist", "!**/build", "!**/coverage"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["__tests__/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
 }
