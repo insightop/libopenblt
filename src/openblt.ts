@@ -130,7 +130,7 @@ export function bltSessionInit(
   // Terminate any existing session
   bltSessionTerminate()
 
-  // Create and configure the transport layer
+  // Create the transport layer — aligns with C openblt.c:258-268
   const transport = new XcpTpMbRtu()
   transport.init({
     serialPort: transportSettings.serialPort,
@@ -141,9 +141,11 @@ export function bltSessionInit(
     destinationAddr: transportSettings.destinationAddr,
   })
 
-  // Create and configure the protocol layer
+  // Create the protocol and link to session — aligns with C openblt.c:274
+  // SessionInit calls protocol.Init(settings) internally, so we pass
+  // the full settings object here (do NOT call protocol.init() separately).
   const protocol = new XcpLoader()
-  protocol.init({
+  sessionInit(protocol, {
     transport,
     timeoutT1: sessionSettings.timeoutT1,
     timeoutT3: sessionSettings.timeoutT3,
@@ -155,9 +157,6 @@ export function bltSessionInit(
     bypassFirmwareStart: (sessionSettings.bypassFirmwareStart ?? 0) !== 0,
     seedKeyFile: sessionSettings.seedKeyFile,
   })
-
-  // Link protocol to session module
-  sessionInit(protocol, protocol)
 }
 
 /**

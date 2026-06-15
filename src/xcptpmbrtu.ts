@@ -17,9 +17,6 @@ import type { XcpTransport } from './xcploader.js'
 /** User-defined Modbus function code for XCP embedding (109 = 0x6D). */
 export const XCP_TP_MBRTU_FCT_CODE_USER_XCP = 109
 
-/** Modbus FC06 Write Single Register. */
-export const MODBUS_FC_WRITE_SINGLE_REGISTER = 0x06
-
 /** Default slave/destination address. */
 export const XCP_TP_MBRTU_DEFAULT_ADDR = 1
 
@@ -171,75 +168,6 @@ export function xcpTpMbRtuParseFrame(
   return raw.slice(3, 3 + xcpLen)
 }
 
-// ── Modbus FC06 (Write Single Register) ──────────────────────
-
-/**
- * Build a Modbus FC06 Write Single Register frame.
- * Frame: [slaveAddr] [FC=0x06] [RegAddr_Hi] [RegAddr_Lo] [Val_Hi] [Val_Lo] [CRC_Lo] [CRC_Hi]
- */
-export function xcpTpMbRtuBuildWriteRegisterFrame(
-  regAddr: number,
-  value: number,
-  slaveAddr: number = XCP_TP_MBRTU_DEFAULT_ADDR,
-): Uint8Array {
-  const frame = new Uint8Array(8)
-  frame[0] = slaveAddr
-  frame[1] = MODBUS_FC_WRITE_SINGLE_REGISTER
-  frame[2] = (regAddr >> 8) & 0xFF
-  frame[3] = regAddr & 0xFF
-  frame[4] = (value >> 8) & 0xFF
-  frame[5] = value & 0xFF
-  const crc = xcpTpMbRtuCrcCalculate(frame.subarray(0, 6))
-  frame[6] = crc & 0xFF
-  frame[7] = (crc >> 8) & 0xFF
-  return frame
-}
-
-/**
- * Parse a Modbus FC06 response frame.
- * Normal response (8 bytes) echoes the request. Exception response (5 bytes) has FC|0x80.
- */
-export function xcpTpMbRtuParseWriteRegisterResponse(
-  raw: Uint8Array,
-  expectedSlaveAddr: number = XCP_TP_MBRTU_DEFAULT_ADDR,
-): { regAddr: number; value: number } {
-  if (raw.length < 5) {
-    throw new Error(`FC06 response too short: ${raw.length} bytes`)
-  }
-
-  const slaveAddr = raw[0]
-  const fc = raw[1]
-
-  if (slaveAddr !== expectedSlaveAddr) {
-    throw new Error(`Slave address mismatch: expected ${expectedSlaveAddr}, got ${slaveAddr}`)
-  }
-
-  // Modbus exception response: FC high bit set
-  if (fc === (MODBUS_FC_WRITE_SINGLE_REGISTER | 0x80)) {
-    const exceptionCode = raw.length >= 3 ? raw[2] : 0
-    throw new Error(`Modbus exception 0x${exceptionCode.toString(16)} on FC06 write`)
-  }
-
-  if (raw.length < 8) {
-    throw new Error(`FC06 response too short: ${raw.length} bytes (expected 8)`)
-  }
-
-  if (fc !== MODBUS_FC_WRITE_SINGLE_REGISTER) {
-    throw new Error(`Unexpected function code: 0x${fc.toString(16)} (expected 0x06)`)
-  }
-
-  // CRC validation
-  const crcReceived = raw[raw.length - 2] | (raw[raw.length - 1] << 8)
-  const crcComputed = xcpTpMbRtuCrcCalculate(raw.subarray(0, raw.length - 2))
-  if (crcReceived !== crcComputed) {
-    throw new Error(`CRC mismatch: received 0x${crcReceived.toString(16)}, computed 0x${crcComputed.toString(16)}`)
-  }
-
-  const regAddr = (raw[2] << 8) | raw[3]
-  const value = (raw[4] << 8) | raw[5]
-  return { regAddr, value }
-}
-
 // ── XcpTransport Implementation ──────────────────────────────
 
 /** Settings for XcpTpMbRtu transport. Aligns with C tXcpTpMbRtuSettings. */
@@ -256,8 +184,6 @@ export interface XcpTpMbRtuSettings {
   stopbits: number
   /** Destination slave address (1–247). */
   destinationAddr: number
-  /** Receive timeout in ms for reading responses. */
-  receiveTimeoutMs?: number
 }
 
 /** Maximum XCP packet size (matching C XCPLOADER_PACKET_SIZE_MAX). */
@@ -285,10 +211,9 @@ export class XcpTpMbRtu implements XcpTransport {
   init(settings: XcpTpMbRtuSettings): void {
     this.settings_ = { ...settings }
 
-    // Calculate T3.5 character time
+    // Calculate T3.5 character time — aligns with C xcptpmbrtu.c:162
     if (settings.baudrate <= 19200) {
-      // T3.5 [ms] = 3.5 * 11 * 1000 / baudrate, rounded up + 1ms adjustment
-      this.t3_5Ms = Math.ceil((38500 + settings.baudrate - 1) / settings.baudrate) + 1
+      this.t3_5Ms = Math.ceil(38500 / settings.baudrate) + 1
     } else {
       this.t3_5Ms = 3 // Fixed 3ms for high baudrates
     }

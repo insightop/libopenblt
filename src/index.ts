@@ -106,8 +106,6 @@ export {
   xcpTpMbRtuCrcCalculate,
   xcpTpMbRtuBuildFrame,
   xcpTpMbRtuParseFrame,
-  xcpTpMbRtuBuildWriteRegisterFrame,
-  xcpTpMbRtuParseWriteRegisterResponse,
   XCP_TP_MBRTU_FCT_CODE_USER_XCP,
   XCP_TP_MBRTU_DEFAULT_ADDR,
 } from './xcptpmbrtu.js'

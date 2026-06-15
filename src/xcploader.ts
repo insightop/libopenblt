@@ -902,7 +902,7 @@ export class XcpLoader implements SessionProtocol {
 
   /**
    * Send XCP BUILD_CHECKSUM command.
-   * Aligns with C (BUILD_CHECKSUM not explicitly in xcploader.c but follows same pattern).
+   * Standard XCP command (0xF3) — business extension for checksum verification.
    */
   async buildChecksum(size: number): Promise<number> {
     const cmdData = new Uint8Array(7)
@@ -917,7 +917,6 @@ export class XcpLoader implements SessionProtocol {
       this.xcpSettings_.timeoutT1,
     )
 
-    // Response: checksum as 4 bytes in slave byte order
     if (data.length < 4) {
       throw new Error('BUILD_CHECKSUM response too short')
     }
@@ -940,13 +939,15 @@ export class XcpLoader implements SessionProtocol {
     try {
       const res = await this.sendRawCmd(XCPLOADER_CMD_USER, cmdData, this.xcpSettings_.timeoutT1)
 
-      // Check for "not supported" error
+      // Check for "not supported" error — aligns with C xcploader.c:1805-1813
+      // When target doesn't support info table, C returns true with tableLen=0.
+      // Caller interprets tableLen=0 as "not supported but ok to proceed".
       if (
         res.len === 2 &&
         res.data[0] === XCPLOADER_CMD_PID_ERR &&
         res.data[1] === XCPLOADER_ERR_CMD_UNKNOWN
       ) {
-        return null
+        return { tableAddress: 0, tableLen: 0 }
       }
 
       if (res.len !== 8 || res.data[0] !== XCPLOADER_CMD_PID_RES) {
