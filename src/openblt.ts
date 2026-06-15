@@ -14,90 +14,89 @@
  */
 
 import {
-  XcpLoader,
-} from './xcploader.js'
-import { XcpTpMbRtu } from './xcptpmbrtu.js'
+  type FirmwareParser,
+  firmwareAddData,
+  firmwareClearData,
+  firmwareGetSegment,
+  firmwareGetSegmentCount,
+  firmwareInit,
+  firmwareLoadFromFile,
+  firmwareRemoveData,
+  firmwareSaveToFile,
+  firmwareTerminate,
+} from "./firmware.js";
 import {
+  sessionCheckInfoTable,
+  sessionClearMemory,
   sessionInit,
-  sessionTerminate,
+  sessionReadData,
   sessionStart,
   sessionStop,
-  sessionClearMemory,
+  sessionTerminate,
   sessionWriteData,
-  sessionReadData,
-  sessionCheckInfoTable,
-} from './session.js'
-import {
-  firmwareInit,
-  firmwareTerminate,
-  firmwareLoadFromFile,
-  firmwareSaveToFile,
-  firmwareGetSegmentCount,
-  firmwareGetSegment,
-  firmwareAddData,
-  firmwareRemoveData,
-  firmwareClearData,
-  type FirmwareParser,
-} from './firmware.js'
+} from "./session.js";
 import {
   utilChecksumCrc16Calculate,
   utilChecksumCrc32Calculate,
-  utilTimeGetSystemTimeMs,
-  utilTimeDelayMs,
-  utilCryptoAes256Encrypt,
   utilCryptoAes256Decrypt,
-} from './util.js'
+  utilCryptoAes256Encrypt,
+  utilTimeDelayMs,
+  utilTimeGetSystemTimeMs,
+} from "./util.js";
+import { XcpLoader } from "./xcploader.js";
+import { XcpTpMbRtu } from "./xcptpmbrtu.js";
 
 // ── Constants (aligning with C openblt.h / openblt.c macros) ───
 
 /** Library version number (major*10000 + minor*100 + patch). Aligns with C BLT_VERSION_NUMBER. */
-export const BLT_VERSION_NUMBER = 10500
+export const BLT_VERSION_NUMBER = 10500;
 
 /** Library version string. Aligns with C BLT_VERSION_STRING. */
-export const BLT_VERSION_STRING = '1.05.00'
+export const BLT_VERSION_STRING = "1.05.00";
 
 /** XCP protocol version 1.0 session type. */
-export const BLT_SESSION_XCP_V10 = 0
+export const BLT_SESSION_XCP_V10 = 0;
 
 /** XCP v1.0 Modbus RTU transport type. */
-export const BLT_TRANSPORT_XCP_V10_MBRTU = 4
+export const BLT_TRANSPORT_XCP_V10_MBRTU = 4;
 
 /** Result OK. */
-export const BLT_RESULT_OK = 0
+export const BLT_RESULT_OK = 0;
 
 /** Result generic error. */
-export const BLT_RESULT_ERROR_GENERIC = 1
+export const BLT_RESULT_ERROR_GENERIC = 1;
 
 /** Info table not supported (update can proceed). */
-export const BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED = 33
+export const BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED = 33;
 
 /** Info table check failed (update should be aborted). */
-export const BLT_RESULT_ERROR_SESSION_INFO_TABLE = 34
+export const BLT_RESULT_ERROR_SESSION_INFO_TABLE = 34;
 
 // ── Settings Interfaces (aligning with C typedef structs) ────
 
 /** XCP v1.0 session settings. Aligns with C tBltSessionSettingsXcpV10. */
 export interface BltSessionSettingsXcpV10 {
-  timeoutT1: number
-  timeoutT3: number
-  timeoutT4: number
-  timeoutT5: number
-  timeoutT6: number
-  timeoutT7: number
-  seedKeyFile: string | null
-  connectMode: number
+  timeoutT1: number;
+  timeoutT3: number;
+  timeoutT4: number;
+  timeoutT5: number;
+  timeoutT6: number;
+  timeoutT7: number;
+  /** Seed/key algorithm injection. Aligns with C seedKeyFile (path to .so). undefined = default. */
+  seedKeyAlgorithm?: import("./xcpprotect-types.js").XcpProtectAlgorithm;
+  connectMode: number;
   /** When true, send DISCONNECT instead of PROGRAM_RESET after programming. */
-  bypassFirmwareStart?: number
+  bypassFirmwareStart?: number;
 }
 
 /** Modbus RTU transport settings. Aligns with C tBltTransportSettingsXcpV10MbRtu. */
 export interface BltTransportSettingsXcpV10MbRtu {
-  serialPort: import('./serialport.js').SerialPort
-  portName: string
-  baudrate: number
-  parity: number
-  stopbits: number
-  destinationAddr: number
+  serialPort: import("./serialport.js").SerialPort;
+  portName: string;
+  baudrate: number;
+  parity: number;
+  stopbits: number;
+  destinationAddr: number;
 }
 
 // ── Session API (aligning with C BltSession* functions) ──────
@@ -119,19 +118,19 @@ export function bltSessionInit(
 ): void {
   // Validate session type
   if (sessionType !== BLT_SESSION_XCP_V10) {
-    throw new Error(`Unsupported session type: ${sessionType}`)
+    throw new Error(`Unsupported session type: ${sessionType}`);
   }
 
   // Validate transport type
   if (transportType !== BLT_TRANSPORT_XCP_V10_MBRTU) {
-    throw new Error(`Unsupported transport type: ${transportType}`)
+    throw new Error(`Unsupported transport type: ${transportType}`);
   }
 
   // Terminate any existing session
-  bltSessionTerminate()
+  bltSessionTerminate();
 
   // Create the transport layer — aligns with C openblt.c:258-268
-  const transport = new XcpTpMbRtu()
+  const transport = new XcpTpMbRtu();
   transport.init({
     serialPort: transportSettings.serialPort,
     portName: transportSettings.portName,
@@ -139,12 +138,12 @@ export function bltSessionInit(
     parity: transportSettings.parity,
     stopbits: transportSettings.stopbits,
     destinationAddr: transportSettings.destinationAddr,
-  })
+  });
 
   // Create the protocol and link to session — aligns with C openblt.c:274
   // SessionInit calls protocol.Init(settings) internally, so we pass
   // the full settings object here (do NOT call protocol.init() separately).
-  const protocol = new XcpLoader()
+  const protocol = new XcpLoader();
   sessionInit(protocol, {
     transport,
     timeoutT1: sessionSettings.timeoutT1,
@@ -155,8 +154,8 @@ export function bltSessionInit(
     timeoutT7: sessionSettings.timeoutT7,
     connectMode: sessionSettings.connectMode,
     bypassFirmwareStart: (sessionSettings.bypassFirmwareStart ?? 0) !== 0,
-    seedKeyFile: sessionSettings.seedKeyFile,
-  })
+    seedKeyAlgorithm: sessionSettings.seedKeyAlgorithm,
+  });
 }
 
 /**
@@ -164,7 +163,7 @@ export function bltSessionInit(
  * Aligns with C BltSessionTerminate.
  */
 export function bltSessionTerminate(): void {
-  sessionTerminate()
+  sessionTerminate();
 }
 
 /**
@@ -173,10 +172,10 @@ export function bltSessionTerminate(): void {
  */
 export async function bltSessionStart(): Promise<number> {
   try {
-    const result = await sessionStart()
-    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC
+    const result = await sessionStart();
+    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC;
   } catch {
-    return BLT_RESULT_ERROR_GENERIC
+    return BLT_RESULT_ERROR_GENERIC;
   }
 }
 
@@ -185,22 +184,19 @@ export async function bltSessionStart(): Promise<number> {
  * Aligns with C BltSessionStop (blocks until complete).
  */
 export async function bltSessionStop(): Promise<void> {
-  await sessionStop()
+  await sessionStop();
 }
 
 /**
  * Clear (erase) memory on the target.
  * Aligns with C BltSessionClearMemory.
  */
-export async function bltSessionClearMemory(
-  address: number,
-  len: number,
-): Promise<number> {
+export async function bltSessionClearMemory(address: number, len: number): Promise<number> {
   try {
-    const result = await sessionClearMemory(address, len)
-    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC
+    const result = await sessionClearMemory(address, len);
+    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC;
   } catch {
-    return BLT_RESULT_ERROR_GENERIC
+    return BLT_RESULT_ERROR_GENERIC;
   }
 }
 
@@ -214,10 +210,10 @@ export async function bltSessionWriteData(
   data: Uint8Array,
 ): Promise<number> {
   try {
-    const result = await sessionWriteData(address, len, data)
-    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC
+    const result = await sessionWriteData(address, len, data);
+    return result ? BLT_RESULT_OK : BLT_RESULT_ERROR_GENERIC;
   } catch {
-    return BLT_RESULT_ERROR_GENERIC
+    return BLT_RESULT_ERROR_GENERIC;
   }
 }
 
@@ -225,14 +221,11 @@ export async function bltSessionWriteData(
  * Read data from the target.
  * Aligns with C BltSessionReadData.
  */
-export async function bltSessionReadData(
-  address: number,
-  len: number,
-): Promise<Uint8Array> {
+export async function bltSessionReadData(address: number, len: number): Promise<Uint8Array> {
   try {
-    return await sessionReadData(address, len)
+    return await sessionReadData(address, len);
   } catch {
-    throw new Error('Session read data failed')
+    throw new Error("Session read data failed");
   }
 }
 
@@ -242,15 +235,15 @@ export async function bltSessionReadData(
  */
 export async function bltSessionCheckInfoTable(): Promise<number> {
   try {
-    const result = await sessionCheckInfoTable()
+    const result = await sessionCheckInfoTable();
     // Aligns with C: when SessionCheckInfoTable returns false → BLT_RESULT_ERROR_GENERIC
-    if (!result.supported && !result.okay) return BLT_RESULT_ERROR_GENERIC
-    if (!result.supported) return BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED
-    if (!result.okay) return BLT_RESULT_ERROR_SESSION_INFO_TABLE
-    return BLT_RESULT_OK
+    if (!result.supported && !result.okay) return BLT_RESULT_ERROR_GENERIC;
+    if (!result.supported) return BLT_RESULT_ERROR_SESSION_INFO_TABLE_NOT_SUPPORTED;
+    if (!result.okay) return BLT_RESULT_ERROR_SESSION_INFO_TABLE;
+    return BLT_RESULT_OK;
   } catch {
     // Protocol not initialized or communication failure → ERROR_GENERIC
-    return BLT_RESULT_ERROR_GENERIC
+    return BLT_RESULT_ERROR_GENERIC;
   }
 }
 
@@ -261,7 +254,7 @@ export async function bltSessionCheckInfoTable(): Promise<number> {
  * Aligns with C BltFirmwareInit.
  */
 export function bltFirmwareInit(parser: FirmwareParser | null = null): void {
-  firmwareInit(parser)
+  firmwareInit(parser);
 }
 
 /**
@@ -269,18 +262,15 @@ export function bltFirmwareInit(parser: FirmwareParser | null = null): void {
  * Aligns with C BltFirmwareTerminate.
  */
 export function bltFirmwareTerminate(): void {
-  firmwareTerminate()
+  firmwareTerminate();
 }
 
 /**
  * Load firmware from a file using the linked parser.
  * Aligns with C BltFirmwareLoadFromFile.
  */
-export function bltFirmwareLoadFromFile(
-  content: string,
-  addressOffset: number = 0,
-): boolean {
-  return firmwareLoadFromFile(content, addressOffset)
+export function bltFirmwareLoadFromFile(content: string, addressOffset: number = 0): boolean {
+  return firmwareLoadFromFile(content, addressOffset);
 }
 
 /**
@@ -288,7 +278,7 @@ export function bltFirmwareLoadFromFile(
  * Aligns with C BltFirmwareGetSegmentCount.
  */
 export function bltFirmwareGetSegmentCount(): number {
-  return firmwareGetSegmentCount()
+  return firmwareGetSegmentCount();
 }
 
 /**
@@ -298,21 +288,17 @@ export function bltFirmwareGetSegmentCount(): number {
 export function bltFirmwareGetSegment(
   idx: number,
 ): { address: number; len: number; data: Uint8Array } | null {
-  const seg = firmwareGetSegment(idx)
-  if (!seg) return null
-  return { address: seg.base, len: seg.length, data: seg.data }
+  const seg = firmwareGetSegment(idx);
+  if (!seg) return null;
+  return { address: seg.base, len: seg.length, data: seg.data };
 }
 
 /**
  * Add firmware data.
  * Aligns with C BltFirmwareAddData.
  */
-export function bltFirmwareAddData(
-  address: number,
-  len: number,
-  data: Uint8Array,
-): boolean {
-  return firmwareAddData(address, len, data)
+export function bltFirmwareAddData(address: number, len: number, data: Uint8Array): boolean {
+  return firmwareAddData(address, len, data);
 }
 
 /**
@@ -320,7 +306,7 @@ export function bltFirmwareAddData(
  * Aligns with C BltFirmwareRemoveData.
  */
 export function bltFirmwareRemoveData(address: number, len: number): boolean {
-  return firmwareRemoveData(address, len)
+  return firmwareRemoveData(address, len);
 }
 
 /**
@@ -328,7 +314,7 @@ export function bltFirmwareRemoveData(address: number, len: number): boolean {
  * Aligns with C BltFirmwareClearData.
  */
 export function bltFirmwareClearData(): void {
-  firmwareClearData()
+  firmwareClearData();
 }
 
 // ── Utility API (aligning with C BltUtil* functions) ─────────
@@ -338,7 +324,7 @@ export function bltFirmwareClearData(): void {
  * Aligns with C BltVersionGetNumber.
  */
 export function bltVersionGetNumber(): number {
-  return BLT_VERSION_NUMBER
+  return BLT_VERSION_NUMBER;
 }
 
 /**
@@ -346,7 +332,7 @@ export function bltVersionGetNumber(): number {
  * Aligns with C BltVersionGetString.
  */
 export function bltVersionGetString(): string {
-  return BLT_VERSION_STRING
+  return BLT_VERSION_STRING;
 }
 
 /**
@@ -354,7 +340,7 @@ export function bltVersionGetString(): string {
  * Aligns with C BltUtilCrc16Calculate.
  */
 export function bltUtilCrc16Calculate(data: Uint8Array): number {
-  return utilChecksumCrc16Calculate(data)
+  return utilChecksumCrc16Calculate(data);
 }
 
 /**
@@ -362,7 +348,7 @@ export function bltUtilCrc16Calculate(data: Uint8Array): number {
  * Aligns with C BltUtilCrc32Calculate.
  */
 export function bltUtilCrc32Calculate(data: Uint8Array): number {
-  return utilChecksumCrc32Calculate(data)
+  return utilChecksumCrc32Calculate(data);
 }
 
 /**
@@ -371,7 +357,7 @@ export function bltUtilCrc32Calculate(data: Uint8Array): number {
  * Note: TS returns content string instead of writing to file.
  */
 export function bltFirmwareSaveToFile(): string | null {
-  return firmwareSaveToFile()
+  return firmwareSaveToFile();
 }
 
 /**
@@ -379,7 +365,7 @@ export function bltFirmwareSaveToFile(): string | null {
  * Aligns with C BltUtilTimeGetSystemTime.
  */
 export function bltUtilTimeGetSystemTime(): number {
-  return utilTimeGetSystemTimeMs()
+  return utilTimeGetSystemTimeMs();
 }
 
 /**
@@ -387,27 +373,21 @@ export function bltUtilTimeGetSystemTime(): number {
  * Aligns with C BltUtilTimeDelayMs.
  */
 export async function bltUtilTimeDelayMs(delay: number): Promise<void> {
-  return utilTimeDelayMs(delay)
+  return utilTimeDelayMs(delay);
 }
 
 /**
  * Encrypt data using AES-256-ECB.
  * Aligns with C BltUtilCryptoAes256Encrypt.
  */
-export function bltUtilCryptoAes256Encrypt(
-  data: Uint8Array,
-  key: Uint8Array,
-): Uint8Array {
-  return utilCryptoAes256Encrypt(data, key)
+export function bltUtilCryptoAes256Encrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  return utilCryptoAes256Encrypt(data, key);
 }
 
 /**
  * Decrypt data using AES-256-ECB.
  * Aligns with C BltUtilCryptoAes256Decrypt.
  */
-export function bltUtilCryptoAes256Decrypt(
-  data: Uint8Array,
-  key: Uint8Array,
-): Uint8Array {
-  return utilCryptoAes256Decrypt(data, key)
+export function bltUtilCryptoAes256Decrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
+  return utilCryptoAes256Decrypt(data, key);
 }

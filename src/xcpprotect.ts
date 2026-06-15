@@ -1,41 +1,47 @@
 /**
  * XCP Protection module — aligns with libopenblt xcpprotect.h / xcpprotect.c.
  *
- * Implements resource protection (seed/key) for XCP sessions.
- * Uses the default OpenBLT SeedNKey algorithm from SeedNKey/seednkey.c:
- *   - Key computation for PGM: key[i] = seed[i] - 1 (each byte decremented by 1)
- *   - Available privileges: PGM resource only
+ * Manages resource protection (seed/key) for XCP sessions.
+ * The actual algorithm is injected via xcpProtectInit(), defaulting to
+ * the OpenBLT demo algorithm from seednkey.ts.
  *
- * This matches the XcpVerifyKeyHook() in the OpenBLT demo bootloaders.
- * You are free to change the algorithm to protect your target from unwanted updates.
+ * This mirrors the C architecture where xcpprotect.c loads a shared library
+ * (.so/.dll) at runtime. In TypeScript, the algorithm is injected as an object.
  */
 
-// ── Resource Constants (matching C seednkey.h XCP_RESOURCE_*) ─
+import { SeedNKeyAlgorithm } from "./seednkey.js";
+import {
+  XCPPROTECT_RESOURCE_PGM,
+  XCPPROTECT_RESOURCE_STIM,
+  XCPPROTECT_RESOURCE_DAQ,
+  XCPPROTECT_RESOURCE_CALPAG,
+  type XcpProtectAlgorithm,
+} from "./xcpprotect-types.js";
 
-/** Programming resource. Aligns with XCP_RESOURCE_PGM. */
-export const XCPPROTECT_RESOURCE_PGM = 0x10
-
-/** Data stimulation resource. Aligns with XCP_RESOURCE_STIM. */
-export const XCPPROTECT_RESOURCE_STIM = 0x08
-
-/** Data acquisition resource. Aligns with XCP_RESOURCE_DAQ. */
-export const XCPPROTECT_RESOURCE_DAQ = 0x04
-
-/** Calibration and paging resource. Aligns with XCP_RESOURCE_CALPAG. */
-export const XCPPROTECT_RESOURCE_CALPAG = 0x01
+// Re-export for backward compatibility
+export {
+  XCPPROTECT_RESOURCE_PGM,
+  XCPPROTECT_RESOURCE_STIM,
+  XCPPROTECT_RESOURCE_DAQ,
+  XCPPROTECT_RESOURCE_CALPAG,
+  type XcpProtectAlgorithm,
+};
 
 // ── Module State ─────────────────────────────────────────────
 
-let initialized = false
+let algorithm_: XcpProtectAlgorithm | null = null;
 
-// ── API Functions (aligning with C XcpProtect* + SeedNKey XCP_*) ─
+// ── API Functions (aligning with C XcpProtect*) ─────────────
 
 /**
  * Initialize the XCP protection module.
- * Aligns with C XcpProtectInit.
+ * Aligns with C XcpProtectInit (which dlopen's a .so file).
+ *
+ * @param algorithm Seed/key algorithm to use. Defaults to SeedNKeyAlgorithm
+ *                  (the OpenBLT demo algorithm from seednkey.c).
  */
-export function xcpProtectInit(_seedKeyFile: string | null): void {
-  initialized = true
+export function xcpProtectInit(algorithm?: XcpProtectAlgorithm): void {
+  algorithm_ = algorithm ?? SeedNKeyAlgorithm;
 }
 
 /**
@@ -43,66 +49,35 @@ export function xcpProtectInit(_seedKeyFile: string | null): void {
  * Aligns with C XcpProtectTerminate.
  */
 export function xcpProtectTerminate(): void {
-  initialized = false
+  algorithm_ = null;
 }
 
 /**
  * Get available resource privileges.
  * Aligns with C XcpProtectGetPrivileges → XCP_GetAvailablePrivileges.
  *
- * Returns a bitmask of resources for which a key algorithm is available.
- * Default OpenBLT algorithm: only PGM resource is supported.
- *
  * @returns Bitmask of available resources, or 0 if not initialized.
  */
 export function xcpProtectGetPrivileges(): number {
-  if (!initialized) return 0
-
-  // Aligns with seednkey.c XCP_GetAvailablePrivileges:
-  // "supports a key computation algorithm for the PGM resource"
-  return XCPPROTECT_RESOURCE_PGM
+  if (!algorithm_) return 0;
+  return algorithm_.getAvailablePrivileges();
 }
 
 /**
  * Compute the key from a seed for resource unlocking.
  * Aligns with C XcpProtectComputeKeyFromSeed → XCP_ComputeKeyFromSeed.
  *
- * Default OpenBLT algorithm (seednkey.c):
- *   For PGM resource: key[i] = seed[i] - 1 for each byte.
- *   This matches the XcpVerifyKeyHook() in OpenBLT demo bootloaders.
- *
- * @param resource The resource to unlock (XCPLOADER_RESOURCE_*).
+ * @param resource The resource to unlock.
  * @param seed The seed bytes from the device.
  * @returns The computed key bytes.
- * @throws If not initialized, invalid resource, or unsupported resource.
+ * @throws If not initialized, seed is empty, or algorithm rejects the request.
  */
-export function xcpProtectComputeKeyFromSeed(
-  resource: number,
-  seed: Uint8Array,
-): Uint8Array {
-  if (!initialized) {
-    throw new Error('XCP protection module not initialized')
+export function xcpProtectComputeKeyFromSeed(resource: number, seed: Uint8Array): Uint8Array {
+  if (!algorithm_) {
+    throw new Error("XCP protection module not initialized");
   }
-
   if (seed.length === 0) {
-    throw new Error('Seed must not be empty')
+    throw new Error("Seed must not be empty");
   }
-
-  // Aligns with seednkey.c XCP_ComputeKeyFromSeed:
-  // Only PGM resource is supported in the default algorithm
-  if (resource === XCPPROTECT_RESOURCE_PGM) {
-    // Compute the key: decrement each seed byte by 1
-    // Aligns with seednkey.c line 72: keyPtr[idx] = seedPtr[idx] - 1
-    const key = new Uint8Array(seed.length)
-    for (let idx = 0; idx < seed.length; idx++) {
-      key[idx] = (seed[idx] - 1) & 0xFF
-    }
-    return key
-  }
-
-  // Unsupported resource
-  throw new Error(
-    `No key algorithm available for resource 0x${resource.toString(16)}. ` +
-    `Only PGM (0x${XCPPROTECT_RESOURCE_PGM.toString(16)}) is supported.`,
-  )
+  return algorithm_.computeKeyFromSeed(resource, seed);
 }

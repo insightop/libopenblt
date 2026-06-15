@@ -13,11 +13,11 @@
  *   sessionTerminate()
  */
 
-import type { SessionProtocol } from './xcploader.js'
+import type { SessionProtocol } from "./xcploader.js";
 
 // ── Module State ─────────────────────────────────────────────
 
-let protocolPtr: SessionProtocol | null = null
+let protocolPtr: SessionProtocol | null = null;
 
 // ── API Functions (aligning with C Session* functions) ───────
 
@@ -26,9 +26,9 @@ let protocolPtr: SessionProtocol | null = null
  * Aligns with C SessionInit.
  */
 export function sessionInit(protocol: SessionProtocol, settings: unknown): void {
-  protocolPtr = protocol
+  protocolPtr = protocol;
   if (protocolPtr) {
-    protocolPtr.init(settings)
+    protocolPtr.init(settings);
   }
 }
 
@@ -38,9 +38,9 @@ export function sessionInit(protocol: SessionProtocol, settings: unknown): void 
  */
 export function sessionTerminate(): void {
   if (protocolPtr) {
-    protocolPtr.terminate()
+    protocolPtr.terminate();
   }
-  protocolPtr = null
+  protocolPtr = null;
 }
 
 /**
@@ -48,8 +48,8 @@ export function sessionTerminate(): void {
  * Aligns with C SessionStart.
  */
 export async function sessionStart(): Promise<boolean> {
-  if (!protocolPtr) return false
-  return protocolPtr.start()
+  if (!protocolPtr) return false;
+  return protocolPtr.start();
 }
 
 /**
@@ -58,7 +58,7 @@ export async function sessionStart(): Promise<boolean> {
  */
 export async function sessionStop(): Promise<void> {
   if (protocolPtr) {
-    await protocolPtr.stop()
+    await protocolPtr.stop();
   }
 }
 
@@ -67,8 +67,8 @@ export async function sessionStop(): Promise<void> {
  * Aligns with C SessionClearMemory.
  */
 export async function sessionClearMemory(address: number, len: number): Promise<boolean> {
-  if (!protocolPtr || len === 0) return false
-  return protocolPtr.clearMemory(address, len)
+  if (!protocolPtr || len === 0) return false;
+  return protocolPtr.clearMemory(address, len);
 }
 
 /**
@@ -80,21 +80,18 @@ export async function sessionWriteData(
   len: number,
   data: Uint8Array,
 ): Promise<boolean> {
-  if (!protocolPtr || len === 0 || !data) return false
-  return protocolPtr.writeData(address, len, data)
+  if (!protocolPtr || len === 0 || !data) return false;
+  return protocolPtr.writeData(address, len, data);
 }
 
 /**
  * Read data from the target.
  * Aligns with C SessionReadData.
  */
-export async function sessionReadData(
-  address: number,
-  len: number,
-): Promise<Uint8Array> {
-  if (!protocolPtr) throw new Error('Session not initialized')
-  if (len === 0) throw new Error('SessionReadData: len must be > 0')
-  return protocolPtr.readData(address, len)
+export async function sessionReadData(address: number, len: number): Promise<Uint8Array> {
+  if (!protocolPtr) throw new Error("Session not initialized");
+  if (len === 0) throw new Error("SessionReadData: len must be > 0");
+  return protocolPtr.readData(address, len);
 }
 
 /**
@@ -102,9 +99,9 @@ export async function sessionReadData(
  * Aligns with C SessionCheckInfoTable.
  */
 export async function sessionCheckInfoTable(): Promise<{
-  supported: boolean
-  okay: boolean
+  supported: boolean;
+  okay: boolean;
 }> {
-  if (!protocolPtr) throw new Error('Session protocol not initialized')
-  return protocolPtr.checkInfoTable()
+  if (!protocolPtr) throw new Error("Session protocol not initialized");
+  return protocolPtr.checkInfoTable();
 }

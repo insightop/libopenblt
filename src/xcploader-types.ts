@@ -7,58 +7,63 @@
 
 // ── XCP Command Codes (matching C #define XCPLOADER_CMD_*) ───
 
-export const XCPLOADER_CMD_CONNECT       = 0xFF
-export const XCPLOADER_CMD_GET_STATUS    = 0xFD
-export const XCPLOADER_CMD_GET_SEED      = 0xF8
-export const XCPLOADER_CMD_UNLOCK        = 0xF7
-export const XCPLOADER_CMD_SET_MTA       = 0xF6
-export const XCPLOADER_CMD_UPLOAD        = 0xF5
-export const XCPLOADER_CMD_SHORT_UPLOAD  = 0xF4
-export const XCPLOADER_CMD_BUILD_CHECKSUM = 0xF3
-export const XCPLOADER_CMD_USER          = 0xF1
-export const XCPLOADER_CMD_DOWNLOAD      = 0xF0
-export const XCPLOADER_CMD_PROGRAM_START = 0xD2
-export const XCPLOADER_CMD_PROGRAM_CLEAR = 0xD1
-export const XCPLOADER_CMD_PROGRAM       = 0xD0
-export const XCPLOADER_CMD_PROGRAM_RESET = 0xCF
-export const XCPLOADER_CMD_PROGRAM_MAX   = 0xC9
-export const XCPLOADER_CMD_GET_ID        = 0xFA
-export const XCPLOADER_CMD_SYNCH         = 0xFC
-export const XCPLOADER_CMD_DISCONNECT    = 0xFE
+export const XCPLOADER_CMD_CONNECT = 0xff;
+export const XCPLOADER_CMD_GET_STATUS = 0xfd;
+export const XCPLOADER_CMD_GET_SEED = 0xf8;
+export const XCPLOADER_CMD_UNLOCK = 0xf7;
+export const XCPLOADER_CMD_SET_MTA = 0xf6;
+export const XCPLOADER_CMD_UPLOAD = 0xf5;
+export const XCPLOADER_CMD_SHORT_UPLOAD = 0xf4;
+export const XCPLOADER_CMD_BUILD_CHECKSUM = 0xf3;
+export const XCPLOADER_CMD_USER = 0xf1;
+export const XCPLOADER_CMD_DOWNLOAD = 0xf0;
+export const XCPLOADER_CMD_PROGRAM_START = 0xd2;
+export const XCPLOADER_CMD_PROGRAM_CLEAR = 0xd1;
+export const XCPLOADER_CMD_PROGRAM = 0xd0;
+export const XCPLOADER_CMD_PROGRAM_RESET = 0xcf;
+export const XCPLOADER_CMD_PROGRAM_MAX = 0xc9;
+export const XCPLOADER_CMD_GET_ID = 0xfa;
+export const XCPLOADER_CMD_SYNCH = 0xfc;
+export const XCPLOADER_CMD_DISCONNECT = 0xfe;
 
 // ── XCP Packet Identifiers (matching C #define XCPLOADER_CMD_PID_*) ──
 
 /** Positive response packet ID. */
-export const XCPLOADER_CMD_PID_RES = 0xFF
+export const XCPLOADER_CMD_PID_RES = 0xff;
 
 /** Error response packet ID. */
-export const XCPLOADER_CMD_PID_ERR = 0xFE
+export const XCPLOADER_CMD_PID_ERR = 0xfe;
 
 // ── XCP Error Codes (OpenBLT-specific, from C code) ──────────
 
-export const XCPLOADER_ERR_CMD_UNKNOWN = 0x20
+export const XCPLOADER_ERR_CMD_UNKNOWN = 0x20;
 
 // ── XCP USER command sub-codes (matching C defines) ───────────
 
-export const XCPLOADER_USER_CMD_INFOTABLE = 0x17
+export const XCPLOADER_USER_CMD_INFOTABLE = 0x17;
 
 /** Info table command IDs. */
-export const XCPLOADER_IT_CID_GETINFO  = 0x04
-export const XCPLOADER_IT_CID_DOWNLOAD = 0x06
-export const XCPLOADER_IT_CID_CHECK    = 0x08
+export const XCPLOADER_IT_CID_GETINFO = 0x04;
+export const XCPLOADER_IT_CID_DOWNLOAD = 0x06;
+export const XCPLOADER_IT_CID_CHECK = 0x08;
 
 // ── Connect retry count (matching C XCPLOADER_CONNECT_RETRIES) ──
 
-export const XCPLOADER_CONNECT_RETRIES = 5
+export const XCPLOADER_CONNECT_RETRIES = 5;
 
 // ── Packet size limit (matching C XCPLOADER_PACKET_SIZE_MAX) ───
 
-export const XCPLOADER_PACKET_SIZE_MAX = 255
+export const XCPLOADER_PACKET_SIZE_MAX = 255;
 
 // ── Default Timeouts (matching C xcpSettings defaults) ────────
 
 export const XCPLOADER_DEFAULT_TIMEOUTS: Readonly<{
-  t1: number; t3: number; t4: number; t5: number; t6: number; t7: number
+  t1: number;
+  t3: number;
+  t4: number;
+  t5: number;
+  t6: number;
+  t7: number;
 }> = {
   /** Command response timeout (ms). */
   t1: 1000,
@@ -72,30 +77,30 @@ export const XCPLOADER_DEFAULT_TIMEOUTS: Readonly<{
   t6: 50,
   /** Busy wait timer timeout (ms). */
   t7: 2000,
-} as const
+} as const;
 
 // ── Settings Interface (matching C tXcpLoaderSettings) ────────
 
 /** XCP loader protocol settings. Aligns with C tXcpLoaderSettings. */
 export interface XcpLoaderSettings {
   /** Command response timeout in ms. */
-  timeoutT1: number
+  timeoutT1: number;
   /** Start programming timeout in ms. */
-  timeoutT3: number
+  timeoutT3: number;
   /** Erase memory timeout in ms. */
-  timeoutT4: number
+  timeoutT4: number;
   /** Program + reset timeout in ms. */
-  timeoutT5: number
+  timeoutT5: number;
   /** Connect response timeout in ms. */
-  timeoutT6: number
+  timeoutT6: number;
   /** Busy wait timeout in ms. */
-  timeoutT7: number
+  timeoutT7: number;
   /** Connection mode for XCP CONNECT command. */
-  connectMode: number
+  connectMode: number;
   /** When true, send DISCONNECT instead of PROGRAM_RESET after programming. */
-  bypassFirmwareStart: boolean
-  /** Path to seed/key algorithm library (null if not needed). */
-  seedKeyFile: string | null
+  bypassFirmwareStart: boolean;
+  /** Seed/key algorithm (undefined = use default SeedNKeyAlgorithm). Aligns with C seedKeyFile. */
+  seedKeyAlgorithm?: import("./xcpprotect-types.js").XcpProtectAlgorithm;
 }
 
 /** Default XcpLoaderSettings with factory defaults. */
@@ -109,6 +114,5 @@ export function createDefaultXcpLoaderSettings(): XcpLoaderSettings {
     timeoutT7: XCPLOADER_DEFAULT_TIMEOUTS.t7,
     connectMode: 0,
     bypassFirmwareStart: false,
-    seedKeyFile: null,
-  }
+  };
 }

@@ -33,12 +33,18 @@ export enum SerialPortStopbits {
 /** Numeric baud rate to enum mapping. */
 export function baudrateEnumFromNumber(baudrate: number): SerialPortBaudrate {
   switch (baudrate) {
-    case 9600: return SerialPortBaudrate.BR9600
-    case 19200: return SerialPortBaudrate.BR19200
-    case 38400: return SerialPortBaudrate.BR38400
-    case 57600: return SerialPortBaudrate.BR57600
-    case 115200: return SerialPortBaudrate.BR115200
-    default: return SerialPortBaudrate.BR9600
+    case 9600:
+      return SerialPortBaudrate.BR9600;
+    case 19200:
+      return SerialPortBaudrate.BR19200;
+    case 38400:
+      return SerialPortBaudrate.BR38400;
+    case 57600:
+      return SerialPortBaudrate.BR57600;
+    case 115200:
+      return SerialPortBaudrate.BR115200;
+    default:
+      return SerialPortBaudrate.BR9600;
   }
 }
 
@@ -58,17 +64,17 @@ export interface SerialPort {
     baudrate: SerialPortBaudrate,
     parity: SerialPortParity,
     stopbits: SerialPortStopbits,
-  ): Promise<boolean>
+  ): Promise<boolean>;
 
   /** Close the serial port. */
-  close(): void
+  close(): void;
 
   /** Write bytes to the serial port. Returns true on success. */
-  write(data: Uint8Array): Promise<boolean>
+  write(data: Uint8Array): Promise<boolean>;
 
   /**
    * Read up to `length` bytes from the serial port.
    * Returns the bytes actually read (may be fewer than `length`).
    */
-  read(length: number): Promise<Uint8Array>
+  read(length: number): Promise<Uint8Array>;
 }
